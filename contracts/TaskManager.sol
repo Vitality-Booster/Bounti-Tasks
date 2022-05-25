@@ -50,6 +50,15 @@ contract TaskManager {
         uint totalGrade;
     }
 
+    // @dev This struct will be used to send needed data about a Task to the front-end
+    struct TaskToGet {
+        address daoContract;
+        address taskOwner;
+        uint prize;
+        uint percentageForReviewers;
+        TaskStatus status;
+    }
+
     // @dev Storing all tasks in a map, where a key is a task id
     mapping(string => Task) private allTasks;
 
@@ -144,11 +153,11 @@ contract TaskManager {
     // May be will need to add a verification where we check if the message sender is from the task DAO or not
     function addWorker(string calldata id)
     taskExists(id) checkTaskStatus(id, TaskStatus.PENDING) isNotWorker(id) isNotReviewer(id) public returns(bool) {
-        // @dev Adding a new Reeviewer to the array
+        // @dev Adding a new Worker to the array
         uint index = allWorkers.length;
         allWorkers.push();
         allWorkers[index].walletAddress = msg.sender;
-        // @dev Adding new Reviewer index to the array "reviewersIndexes" inside Task struct
+        // @dev Adding new Worker index to the array "workersIndexes" inside Task struct
         allTasks[id].workersIndexes.push(index);
         return true;
     }
@@ -157,7 +166,7 @@ contract TaskManager {
     // May be will need to add a verification where we check if the message sender is from the task DAO or not
     function addReviewer(string calldata id)
     taskExists(id) checkTaskStatus(id, TaskStatus.PENDING) isNotWorker(id) isNotReviewer(id) public returns(bool) {
-        // @dev Adding a new Reeviewer to the array
+        // @dev Adding a new Reviewer to the array
         uint reviewerIndex = allReviewers.length;
         allReviewers.push();
         allReviewers[reviewerIndex].walletAddress = msg.sender;
@@ -214,7 +223,7 @@ contract TaskManager {
         for ( ; forRemove.i < forRemove.indexes.length; forRemove.i++) {
             forRemove.index = forRemove.indexes[forRemove.i];
             if (allReviewers[forRemove.i].walletAddress == msg.sender) {
-                // @dev Firstly, delete the index inside "rivewersIndexes" array which is inside the Task
+                // @dev Firstly, delete the index inside "reviewersIndexes" array which is inside the Task
                 allTasks[id].reviewersIndexes[forRemove.i] = allTasks[id].reviewersIndexes[forRemove.indexes.length - 1];
                 allTasks[id].reviewersIndexes.pop();
                 // @dev Then delete the exact reviewer from allReviewers
@@ -225,8 +234,19 @@ contract TaskManager {
         return false;
     }
 
-    function getTask(string calldata id) taskExists(id) public view returns (Task memory) {
-        return allTasks[id];
+    function getTask(string calldata id)
+    taskExists(id) public view returns (TaskToGet memory, address[] memory, address[] memory) {
+        TaskToGet memory taskData;
+        taskData.daoContract = allTasks[id].daoContract;
+        taskData.taskOwner = allTasks[id].taskOwner;
+        taskData.percentageForReviewers = allTasks[id].percentageForReviewers;
+        taskData.prize = allTasks[id].prize;
+        taskData.status = allTasks[id].status;
+
+        address[] memory workers = getAllWorkers(id);
+        address[] memory reviewers = getAllReviewers(id);
+
+        return (taskData, workers, reviewers);
     }
 
     function getAllDaoTasks(address daoContract) public view returns(string[] memory) {
@@ -374,7 +394,7 @@ contract TaskManager {
             }
             // @dev Paying Reviewers
             uint price = allTasks[id].prize * allTasks[id].percentageForReviewers / 100 / reviewersIndexes.length;
-            // There should be transfer mehtod
+            // There should be transfer method
         }
 
         // @dev Paying Workers
