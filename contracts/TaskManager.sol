@@ -30,6 +30,7 @@ contract TaskManager {
         // @dev This map has a worker address as a key and a number as a value. Number shows a review for a particular worker.
         mapping(address => uint) reviewPerWorker;
         bool reviewCompleted;
+        bool needImprovements; // @dev Shows if a Reviewer demanded for improvements from workers
     }
 
     struct Worker {
@@ -302,6 +303,7 @@ contract TaskManager {
         }
         if (isAllWorkCompleted(id)) {
             allTasks[id].status = TaskStatus.REVIEW;
+            resetReviewers(id);
         }
     }
 
@@ -320,22 +322,39 @@ contract TaskManager {
         return false;
     }
 
+    function resetReviewers(string calldata id) private {
+        uint[] memory reviewerIndexes = allTasks[id].reviewersIndexes;
+
+        for (uint i = 0; i < reviewerIndexes.length; i++) {
+            uint index = reviewerIndexes[i];
+            allReviewers[index].needImprovements = false;
+            allReviewers[index].reviewCompleted = false;
+        }
+    }
+
     function reviewTask(string calldata id, address[] calldata reviewedWorkers, uint[] calldata grades)
-    isReviewer(id) checkTaskStatus(id, TaskStatus.REVIEW) public {
+    checkTaskStatus(id, TaskStatus.REVIEW) public {
         executeReview(id, reviewedWorkers, grades);
 
         if (isReviewCompleted(id)) {
             allTasks[id].status = TaskStatus.COMPLETED;
+            completeAllWork(id);
         }
     }
 
-    // function executeReview(string calldata id, DataForReviewing memory data)
     function executeReview(string calldata id, address[] calldata reviewedWorkers, uint[] calldata grades)
-    private {
+    isReviewer(id) private {
         Reviewer storage reviewer = getReviewer(id, msg.sender);
         for (uint i = 0; i < grades.length; i++) {
             address worker = reviewedWorkers[i];
             uint grade = grades[i];
+            // @dev That makes a grade not exceed its limits: 1 is minimum, 10 is maximum
+            if (grade < 1) {
+                grade = 1;
+            }
+            if (grade > 10) {
+                grade = 10;
+            }
             reviewer.reviewPerWorker[worker] = grade;
         }
         reviewer.reviewCompleted = true;
@@ -394,7 +413,6 @@ contract TaskManager {
 
         for(uint i = 0; i < reviewersIndexes.length; i++) {
             uint index = reviewersIndexes[i];
-            // @dev If at least one of the reviewers did not complete a review, then the false is returned
             if (!allReviewers[index].reviewCompleted) {
                 return false;
             }
@@ -402,11 +420,76 @@ contract TaskManager {
         return true;
     }
 
-    function askForImprovements(string calldata id, address walletAddress)
+    function askForImprovements(string calldata id, address[] calldata walletAddresses)
     taskExists(id) isReviewer(id) checkTaskStatus(id, TaskStatus.REVIEW) public {
-        Worker storage worker = getWorker(id, walletAddress);
-        worker.workCompleted = false;
-        allTasks[id].status = TaskStatus.IN_PROCESS;
+
+        executeAskForImprovements(id, walletAddresses);
+
+        if (shouldBeImproved(id)) {
+            allTasks[id].status = TaskStatus.IN_PROCESS;
+        }
+        else if (isReviewCompleted(id)) {
+            // As "executeAskForImprovements" turns value "reviewCompleted" to "true", it means that askForImprovement also counts as completing a review.
+            // And there we check if everyone finished reviewing task.
+            // If they did and the task didn't go to the IN_PROCESS yet, then the majority thinks that it should not be improved and it can move to the COMPLETED state
+            allTasks[id].status = TaskStatus.COMPLETED;
+            completeAllWork(id);
+        }
+    }
+
+    function executeAskForImprovements(string calldata id, address[] calldata walletAddresses) private {
+        for (uint i = 0; i < walletAddresses.length; i++) {
+            Worker storage worker = getWorker(id, walletAddresses[i]);
+            worker.workCompleted = false;
+        }
+
+        Reviewer storage currentReviewer = getReviewer(id, msg.sender);
+
+        // "reviewCompleted" value is turn into "true", so that if the majority of reviewers still decide that the task is completed,
+        //  then it was possible to complete the task
+        currentReviewer.reviewCompleted = true;
+        currentReviewer.needImprovements = true;
+
+    }
+
+    // @dev Checks if the task should be improved according to reviewers feedback
+    // If the majority (>= 50%) of reviewers said that it should be improved, then return "true", otherwise returns "false"
+    function shouldBeImproved(string calldata id) private view returns(bool) {
+        uint[] memory reviewerIndexes = allTasks[id].reviewersIndexes;
+
+
+        uint residual = reviewerIndexes.length % 2;
+
+        // @dev keeps track of a number of reviewers that asked for improvements
+        uint requiredImprovements;
+
+        for (uint i = 0; i < reviewerIndexes.length; i++) {
+            uint index = reviewerIndexes[i];
+            if (allReviewers[index].needImprovements) {
+                requiredImprovements++;
+            }
+        }
+
+        // I add residual to the length, because it can be only equal to "1" or "0" and
+        // when you add it to the length then the sum will be able to be devided by 2 without a residual
+        // Quick example: if length = 6, then residual = 6 % 2 = 0, then requiredImprovements should be equal to or more than ( (6 + 0) / 2);
+        // if length = 7, then residual = 7 % 2 = 1, then requiredImprovements should be equal to or more than ( (7 + 1) / 2)
+        if (requiredImprovements >= ((reviewerIndexes.length + residual) / 2)) {
+            return true;
+        }
+        return false;
+    }
+
+    // @dev This function must be executed only when the Task moves to the "COMPLETED" status
+    // It is done, as when the Task moves to completed, some workers may have their "workCompleted" property set to "false" due to
+    // reviewers that may have asked for improvements from them
+    function completeAllWork(string calldata id) private {
+        uint[] memory workersIndexes = allTasks[id].workersIndexes;
+
+        for (uint i = 0; i < workersIndexes.length; i++) {
+            uint index = workersIndexes[i];
+            allWorkers[index].workCompleted = true;
+        }
     }
 
     function completeTask(string calldata id)
