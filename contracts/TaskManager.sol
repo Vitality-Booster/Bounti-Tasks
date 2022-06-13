@@ -57,6 +57,7 @@ contract TaskManager is OwnableUpgradeable, ITaskManager {
     }
 
     modifier onlyParticularStatus(string calldata id, SharedTypes.TaskStatus status) {
+        require(allTasks[id].status != SharedTypes.TaskStatus.DOES_NOT_EXIST, "A task with this ID does not exist");
         require(allTasks[id].status == status, "You can't do this action at current Task stage");
         _;
     }
@@ -72,13 +73,17 @@ contract TaskManager is OwnableUpgradeable, ITaskManager {
         taskMemberProxy = _taskMemberProxy;
     }
 
+    function getTaskMemberProxy() view public returns(address) {
+        return taskMemberProxy;
+    }
+
     function initialize() public initializer {
         __Ownable_init();
     }
 
     // @dev Creates a task, with provided daoContract and TaskId and message sender becomes a task owner
-    function createTask(address daoContract, string calldata id, uint prize, uint percentageForReviewers)
-    onlyParticularStatus(id, SharedTypes.TaskStatus.DOES_NOT_EXIST) public {
+    function createTask(address daoContract, string calldata id, uint prize, uint percentageForReviewers) public {
+        require(allTasks[id].status == SharedTypes.TaskStatus.DOES_NOT_EXIST, "The task with this ID already exist");
         allTasks[id].daoContract = daoContract;
         allTasks[id].taskOwner = msg.sender;
         allTasks[id].id = id;
@@ -105,9 +110,8 @@ contract TaskManager is OwnableUpgradeable, ITaskManager {
         }
     }
 
-    function getTask(string calldata id)
-    public view returns (TaskToGet memory, address[] memory, address[] memory) {
-        require(allTasks[id].status != SharedTypes.TaskStatus.DOES_NOT_EXIST, "A task with this id does not exist");
+    function getTask(string calldata id) public view returns (TaskToGet memory, address[] memory, address[] memory) {
+        require(allTasks[id].status != SharedTypes.TaskStatus.DOES_NOT_EXIST, "A task with this ID does not exist");
         TaskToGet memory taskData;
         taskData.daoContract = allTasks[id].daoContract;
         taskData.taskOwner = allTasks[id].taskOwner;

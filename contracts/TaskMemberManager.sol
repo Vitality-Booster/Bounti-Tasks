@@ -3,6 +3,11 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+// OpenZeppelin suggest themselves to use UUPS Proxies, but for that you need to import and inherit the contract commented below
+// I didn't do that, because with this implementation my contract exceeds the contract size limit
+// So if you decide to use UUPS, you will firstly need to refactor the contract
+
+//import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./TaskManager.sol";
 import "./ITaskMemberManager.sol";
 import "./ITaskManager.sol";
@@ -64,19 +69,30 @@ contract TaskMemberManager is OwnableUpgradeable, ITaskMemberManager {
         _;
     }
 
+    modifier onlyNotAssigned(string calldata id) {
+        require(memberRoles[id][msg.sender] == SharedTypes.TaskRole.NOT_RELATED, "You have already been assigned to this task");
+        _;
+    }
+
     function setTaskProxy(address _taskProxy) onlyOwner public {
         taskProxy = _taskProxy;
+    }
+
+    function getTaskProxy() view public returns(address) {
+        return taskProxy;
     }
 
     function initialize() public initializer {
         __Ownable_init();
     }
 
+//    function _authorizeUpgrade(address newImplementation) onlyOwner override internal {
+//
+//    }
     // @dev Makes a message sender a worker for the task
     // May be will need to add a verification where we check if the message sender is from the task DAO or not
     function addWorker(string calldata id)
-    onlyParticularStatus(id, SharedTypes.TaskStatus.PENDING) public {
-        require(memberRoles[id][msg.sender] == SharedTypes.TaskRole.NOT_RELATED, "You have already been assigned to this task");
+    onlyParticularStatus(id, SharedTypes.TaskStatus.PENDING) onlyNotAssigned(id) public {
         memberRoles[id][msg.sender] = SharedTypes.TaskRole.WORKER;
 
         // @dev Adding a new Worker to the array
@@ -92,8 +108,7 @@ contract TaskMemberManager is OwnableUpgradeable, ITaskMemberManager {
     // @dev Makes a message sender a reviewer for the task
     // May be will need to add a verification where we check if the message sender is from the task DAO or not
     function addReviewer(string calldata id)
-    onlyParticularStatus(id, SharedTypes.TaskStatus.PENDING) public {
-        require(memberRoles[id][msg.sender] == SharedTypes.TaskRole.NOT_RELATED, "You have already been assigned to this task");
+    onlyParticularStatus(id, SharedTypes.TaskStatus.PENDING) onlyNotAssigned(id) public {
         memberRoles[id][msg.sender] = SharedTypes.TaskRole.REVIEWER;
 
         // @dev Adding a new Reviewer to the array
@@ -112,12 +127,15 @@ contract TaskMemberManager is OwnableUpgradeable, ITaskMemberManager {
         require(role != SharedTypes.TaskRole.NOT_RELATED, "You have not been assigned to this task");
         uint index = memberIndexes[id][msg.sender];
         ITaskManager(taskProxy).removeMember(id, role, index);
-        if (role == SharedTypes.TaskRole.WORKER) {
-            delete allWorkers[index];
-        }
-        else if (role == SharedTypes.TaskRole.REVIEWER) {
-            delete allReviewers[index];
-        }
+
+        deleteMember(id, index, role);
+//        if (role == SharedTypes.TaskRole.WORKER) {
+//            delete allWorkers[index];
+//
+//        }
+//        else if (role == SharedTypes.TaskRole.REVIEWER) {
+//            delete allReviewers[index];
+//        }
     }
 
     function removeAllMembers(string calldata id, uint[] calldata workersIndexes, uint[] calldata reviewersIndexes)
