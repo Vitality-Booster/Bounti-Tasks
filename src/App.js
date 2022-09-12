@@ -1,9 +1,10 @@
 import './App.css';
-import React, { useEffect, useState, useRef } from "react";
-import { useMoralis } from "react-moralis";
-import { Moralis } from "moralis";
+import React, {useState} from "react";
+import {useMoralis} from "react-moralis";
+import {Moralis} from "moralis";
 import abi from "./utils/TaskManager.json";
-import {Button, Col, Figure, FormControl, FormGroup, FormLabel, Row} from "react-bootstrap";
+import {Button, Col, FormControl, FormGroup, FormLabel, Row} from "react-bootstrap";
+
 // import FigureImage from "react-bootstrap/FigureImage";
 
 function App() {
@@ -53,9 +54,8 @@ function App() {
     const { ethereum } = window;
     const provider = new ethers.providers.Web3Provider(ethereum);
     const signer = provider.getSigner();
-    const bountiContract = new ethers.Contract(contractAddress, contractABI, signer);
 
-    return bountiContract;
+    return new ethers.Contract(contractAddress, contractABI, signer);
   }
 
   const logOut = async () => {
